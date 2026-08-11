@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>XnbCore</AssemblyName>
+    <RootNamespace>XnbCore</RootNamespace>
+    <!-- The vendored MonoGame decompressors are legacy C; silence their noise. -->
+    <NoWarn>$(NoWarn);CS0649;CS0169;CS0414;CS0219;CS0162;CS1591</NoWarn>
+
+    <!-- Pinned MonoGame revision that the vendored decompressors are taken from. -->
+    <MonoGameRef>v3.8.5</MonoGameRef>
+    <MonoGameRaw>https://raw.githubusercontent.com/MonoGame/MonoGame/$(MonoGameRef)</MonoGameRaw>
+  </PropertyGroup>
+
+  <!--
+    LZX (XNA) and LZ4 (MonoGame) decompression are not reimplemented here. The three
+    files below are pulled verbatim from MonoGame at build time and compiled in.
+
+      LzxDecoder.cs        dual LGPL-2.1 / MS-PL, derived from Stuart Caie's libmspack
+      LzxDecoderStream.cs  MIT (MonoGame)
+      Lz4DecoderStream.cs  MIT (MonoGame)
+
+    If you build offline, drop those three files into Vendor/ by hand; the download
+    is skipped when they already exist. See THIRD-PARTY-NOTICES.md.
+  -->
+  <Target Name="FetchVendoredDecompressors" BeforeTargets="BeforeCompile">
+    <MakeDir Directories="$(MSBuildProjectDirectory)/Vendor" />
+    <DownloadFile SourceUrl="$(MonoGameRaw)/MonoGame.Framework/Content/LzxDecoder.cs"
+                  DestinationFolder="$(MSBuildProjectDirectory)/Vendor"
+                  Condition="!Exists('$(MSBuildProjectDirectory)/Vendor/LzxDecoder.cs')" />
+    <DownloadFile SourceUrl="$(MonoGameRaw)/MonoGame.Framework/Utilities/LzxStream/LzxDecoderStream.cs"
+                  DestinationFolder="$(MSBuildProjectDirectory)/Vendor"
+                  Condition="!Exists('$(MSBuildProjectDirectory)/Vendor/LzxDecoderStream.cs')" />
+    <DownloadFile SourceUrl="$(MonoGameRaw)/MonoGame.Framework/Utilities/Lz4Stream/Lz4DecoderStream.cs"
+                  DestinationFolder="$(MSBuildProjectDirectory)/Vendor"
+                  Condition="!Exists('$(MSBuildProjectDirectory)/Vendor/Lz4DecoderStream.cs')" />
+    <!-- Vendor/ is empty at evaluation time on a clean clone, so add the files explicitly. -->
+    <ItemGroup>
+      <Compile Include="$(MSBuildProjectDirectory)/Vendor/*.cs" Exclude="@(Compile)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

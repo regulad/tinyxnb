@@ -1,0 +1,24 @@
+# Build output. MSBuild writes obj/ (intermediates, restore assets) and bin/ (binaries,
+# and publish/ beneath it) next to every .csproj, so these must match at any depth --
+# hence no leading slash. Case variants are the .NET convention; some templates capitalise.
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio / Rider local state
+.vs/
+.idea/
+*.user
+*.suo
+
+# dotnet test output, for when the test project lands
+[Tt]est[Rr]esults/
+
+# Crash dumps -- debugging a COM server in dllhost.exe tends to produce these
+*.dmp
+
+# Fetched from MonoGame at build time. Keeping these out of the repo also keeps
+# Ms-PL's source-form reciprocity off it; see THIRD-PARTY-NOTICES.md.
+src/XnbCore/Vendor/
+
+# Per-machine Claude Code permissions, not project configuration.
+.claude/settings.local.json

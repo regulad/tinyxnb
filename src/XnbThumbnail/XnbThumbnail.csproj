@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>XnbThumbnail</AssemblyName>
+    <RootNamespace>XnbThumbnail</RootNamespace>
+
+    <!-- Produces XnbThumbnail.comhost.dll, the native stub Explorer's dllhost.exe loads. -->
+    <EnableComHosting>true</EnableComHosting>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+
+    <!-- Explorer is 64-bit; a 32-bit build will silently never be called. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+    <!--
+      Framework-dependent, and it has to be. COM hosting starts the runtime through
+      hostfxr_initialize_for_runtime_config, which does not accept a self-contained
+      runtimeconfig.json: a self-contained build compiles fine (NETSDK1128 is only a
+      warning) but DllGetClassObject then fails at activation with 0x80008093. So the
+      .NET 8 runtime is a genuine prerequisite for the thumbnail handler; install.ps1
+      must check for it. xnb2png.exe stays self-contained and has no such constraint.
+    -->
+    <SelfContained>false</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Built-in COM interop is incompatible with trimming; leave both off. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XnbCore\XnbCore.csproj" />
+  </ItemGroup>
+
+</Project>
