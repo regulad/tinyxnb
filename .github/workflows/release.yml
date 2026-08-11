@@ -1,0 +1,124 @@
+name: Release
+
+# Versions are date-based: yy.M.d, no zero padding. Today would be 26.8.11.
+# Tag a release to publish it:
+#
+#   git tag v26.8.11 && git push origin v26.8.11
+#
+# Produces tinyxnb-<version>-win-x64.zip plus a .sha256 sidecar. The sidecar is what the
+# Scoop manifest's autoupdate block reads, so excavator can bump the hash without a human.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without the leading v. Defaults to today's date as yy.M.d."
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and package
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $v = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+              # Date-based scheme: yy.M.d, unpadded. A manual run with no input means "today".
+              if ('${{ inputs.version }}') { '${{ inputs.version }}' }
+              else { (Get-Date).ToString('yy.M.d') }
+          } else {
+              '${{ github.ref_name }}' -replace '^v', ''
+          }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Version '$v' is not a valid yy.M.d version." }
+          "version=$v" | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Host "Packaging tinyxnb $v"
+
+      # The first build downloads the vendored MonoGame decompressors into
+      # src/XnbCore/Vendor/, which is why this step needs network access.
+      - name: Publish
+        run: |
+          dotnet publish src/Xnb2Png/Xnb2Png.csproj -c Release
+          dotnet publish src/XnbThumbnail/XnbThumbnail.csproj -c Release
+
+      - name: Stage package
+        shell: pwsh
+        run: |
+          $stage = 'stage'
+          New-Item -ItemType Directory -Path $stage | Out-Null
+
+          # Flat layout: install.ps1 finds the payload beside itself, and Scoop extracts
+          # straight into $dir with no wrapper folder to strip.
+          Copy-Item 'src/XnbThumbnail/bin/Release/net8.0-windows/win-x64/publish/*' $stage -Exclude '*.pdb'
+          Copy-Item 'src/Xnb2Png/bin/Release/net8.0/win-x64/publish/xnb2png.exe' $stage
+
+          Copy-Item 'install.ps1', 'uninstall.ps1', 'README.md' $stage
+          # Ms-PL requires the notices to travel with the compiled binaries; the vendored
+          # decompressors are inside XnbCore.dll. Shipping these is a licence obligation,
+          # not a courtesy. See THIRD-PARTY-NOTICES.md.
+          Copy-Item 'LICENSE', 'THIRD-PARTY-NOTICES.md' $stage
+          Copy-Item 'licenses' $stage -Recurse
+
+          # Fail loudly rather than shipping a package that install.ps1 would reject.
+          $required = @(
+              'XnbThumbnail.comhost.dll'
+              'XnbThumbnail.dll'
+              'XnbThumbnail.deps.json'
+              'XnbThumbnail.runtimeconfig.json'
+              'XnbCore.dll'
+              'xnb2png.exe'
+              'install.ps1'
+              'uninstall.ps1'
+              'THIRD-PARTY-NOTICES.md'
+              'licenses/MonoGame-v3.8.5-LICENSE.txt'
+          )
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $stage $_)) }
+          if ($missing) { throw "Package is missing: $($missing -join ', ')" }
+
+          Get-ChildItem $stage -Recurse -File | ForEach-Object { $_.FullName.Replace("$PWD\", '') }
+
+      - name: Archive
+        shell: pwsh
+        run: |
+          $name = "tinyxnb-${{ steps.version.outputs.version }}-win-x64.zip"
+          Compress-Archive -Path 'stage/*' -DestinationPath $name -CompressionLevel Optimal
+          # sha256sum format: Scoop's autoupdate hash extraction reads this directly.
+          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Out-File "$name.sha256" -Encoding ascii -NoNewline
+          Write-Host "$name  $hash"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tinyxnb-win-x64
+          path: |
+            tinyxnb-*.zip
+            tinyxnb-*.zip.sha256
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create '${{ github.ref_name }}' `
+            tinyxnb-*.zip tinyxnb-*.zip.sha256 `
+            --title 'tinyxnb ${{ steps.version.outputs.version }}' `
+            --generate-notes

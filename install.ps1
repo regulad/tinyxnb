@@ -88,14 +88,30 @@ function Test-DotnetRuntime {
       rollForward=LatestMinor. Neither Minor nor LatestMinor crosses a major version, so a
       9.x or 10.x runtime does NOT satisfy it -- it must be 8.x specifically.
     #>
-    $roots = @(
-        "$env:ProgramW6432\dotnet\shared\Microsoft.NETCore.App"
-        "$env:ProgramFiles\dotnet\shared\Microsoft.NETCore.App"
-    ) | Where-Object { $_ } | Select-Object -Unique
+    # Probe the same places hostfxr does, in the same order, so a perfectly good
+    # non-default install (DOTNET_ROOT, or a relocated one recorded in the registry)
+    # isn't rejected out of hand.
+    $candidates = New-Object System.Collections.Generic.List[string]
+    if ($env:DOTNET_ROOT) { $candidates.Add($env:DOTNET_ROOT) }
 
-    foreach ($root in $roots) {
-        if (-not (Test-Path -LiteralPath $root)) { continue }
-        $eight = Get-ChildItem -LiteralPath $root -Directory |
+    $reg = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\dotnet\Setup\InstalledVersions\x64' `
+                            -ErrorAction SilentlyContinue
+    if ($reg) {
+        $loc = $reg.PSObject.Properties['InstallLocation']
+        if ($loc -and $loc.Value) { $candidates.Add($loc.Value) }
+    }
+
+    foreach ($programFiles in @($env:ProgramW6432, $env:ProgramFiles)) {
+        if ($programFiles) { $candidates.Add("$programFiles\dotnet") }
+    }
+
+    # String concatenation rather than Join-Path: Join-Path resolves the drive qualifier and
+    # throws if it does not exist, which under $ErrorActionPreference='Stop' would turn a
+    # stale DOTNET_ROOT into a fatal, baffling install failure.
+    foreach ($root in ($candidates | Select-Object -Unique)) {
+        $shared = "$root\shared\Microsoft.NETCore.App"
+        if (-not (Test-Path -LiteralPath $shared)) { continue }
+        $eight = Get-ChildItem -LiteralPath $shared -Directory |
                  ForEach-Object { $_.Name -as [version] } |
                  Where-Object { $_ -and $_.Major -eq 8 } |
                  Sort-Object -Descending
@@ -176,7 +192,19 @@ hostfxr_initialize_for_runtime_config, which cannot load a self-contained
 runtimeconfig.json -- so the handler is framework-dependent by necessity and .NET 8 is a
 hard prerequisite. A 9.x or 10.x runtime will not do; roll-forward does not cross majors.
 
-  winget install Microsoft.DotNet.DesktopRuntime.8
+Only the base runtime is needed -- the handler asks for Microsoft.NETCore.App, not
+WindowsDesktop.App -- though the Desktop Runtime and the SDK are supersets and also work.
+
+  winget install Microsoft.DotNet.Runtime.8      (needs admin)
+
+Or, with no admin at all, into your profile:
+
+  ./dotnet-install.ps1 -Runtime dotnet -Channel 8.0 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet"
+  setx DOTNET_ROOT "$env:LOCALAPPDATA\Microsoft\dotnet"
+
+DOTNET_ROOT is the first place both this script and the COM host's own runtime resolver
+look, so a per-user install works -- but Explorer must be restarted afterwards to inherit
+the new environment.
 
 (xnb2png.exe is self-contained and needs none of this.)
 '@

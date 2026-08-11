@@ -16,6 +16,11 @@
 # Crash dumps -- debugging a COM server in dllhost.exe tends to produce these
 *.dmp
 
+# Release packaging, when the workflow's steps are run by hand
+/stage/
+tinyxnb-*-win-x64.zip
+tinyxnb-*-win-x64.zip.sha256
+
 # Fetched from MonoGame at build time. Keeping these out of the repo also keeps
 # Ms-PL's source-form reciprocity off it; see THIRD-PARTY-NOTICES.md.
 src/XnbCore/Vendor/

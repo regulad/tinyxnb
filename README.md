@@ -8,6 +8,111 @@ in the shell.
 MonoGame and FNA — Stardew Valley, Terraria, Dust: An Elysian Tail and many others ship
 their art as `.xnb`.
 
+## Installing
+
+**Scoop is the canonical way to install tinyxnb.** It handles the download, the hash check,
+registration, updates and clean removal, and it needs no administrator rights.
+
+```powershell
+scoop bucket add regulad https://github.com/regulad/scoop-regulad
+scoop install regulad/tinyxnb
+```
+
+Explorer is restarted as part of the install, so thumbnails appear immediately.
+
+### Prerequisite: the .NET 8 runtime
+
+The only thing Scoop cannot install for you — no bucket carries a runtime-only .NET package.
+Any **one** of these is sufficient, since all three place `Microsoft.NETCore.App` **8.x**
+into the same `shared` folder that the COM host's runtime resolver reads:
+
+```powershell
+winget install Microsoft.DotNet.Runtime.8          # smallest, and all that is needed
+winget install Microsoft.DotNet.DesktopRuntime.8   # superset, also fine
+winget install Microsoft.DotNet.SDK.8              # superset, also fine
+```
+
+It must be **8.x specifically**: the handler asks for `Microsoft.NETCore.App 8.0.0`, and
+hostfxr's roll-forward does not cross major versions, so a 9.x or 10.x runtime will not
+satisfy it. Note it asks for the *base* framework, not `WindowsDesktop.App` — which is why
+the plain runtime is enough.
+
+Those installers need admin. If you want to avoid elevation entirely, install .NET into your
+profile instead:
+
+```powershell
+./dotnet-install.ps1 -Runtime dotnet -Channel 8.0 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet"
+setx DOTNET_ROOT "$env:LOCALAPPDATA\Microsoft\dotnet"
+```
+
+`DOTNET_ROOT` is the first location both the COM host and `install.ps1` consult, so a
+per-user runtime works — but Explorer must be restarted afterwards to inherit the variable.
+
+### Manual install
+
+For working from a source tree or a release zip without Scoop. Per-user and unelevated:
+`install.ps1` writes only under `HKCU\Software\Classes`, and `uninstall.ps1` removes every
+key it wrote.
+
+```powershell
+.\install.ps1 -RestartExplorer          # copies to %LOCALAPPDATA%\Programs\tinyxnb
+.\uninstall.ps1 -RemoveFiles -RestartExplorer
+```
+
+Explorer must restart before the handler is loaded — `SHChangeNotify` is enough to make the
+verbs appear, but not to make Explorer load a newly-registered handler DLL. Run both from
+**64-bit** PowerShell: a 32-bit host's `HKCU\Software\Classes\CLSID` writes are redirected
+into `Wow6432Node`, where 64-bit Explorer will never look, and the symptom is simply that
+nothing happens.
+
+`install.ps1 -ClearThumbnailCache` is a testing aid. Once Explorer has cached a thumbnail it
+will not call the handler again for that file — not after a rebuild, and not after a rename
+or move — so a stale thumbnail is indistinguishable from a broken handler.
+
+### Packaging notes
+
+Releases are versioned by date as `yy.M.d`, unpadded — today's would be `26.8.11` — and are
+built and published by `.github/workflows/release.yml` when a `v*` tag is pushed. Each
+release carries a `.sha256` sidecar next to the zip so a bucket's autoupdate can pick the
+hash up without a human.
+
+`-InPlace` registers the binaries where they already sit, leaving Scoop in charge of the
+files:
+
+```json
+{
+    "version": "26.8.11",
+    "architecture": {
+        "64bit": { "url": "...tinyxnb-26.8.11-win-x64.zip", "hash": "..." }
+    },
+    "bin": "xnb2png.exe",
+    "post_install": [
+        "$target = Join-Path (Split-Path $dir -Parent) 'current'",
+        "& \"$dir\\install.ps1\" -InPlace -SourceDir $target -RestartExplorer"
+    ],
+    "pre_uninstall": [ "& \"$dir\\uninstall.ps1\" -RestartExplorer" ]
+}
+```
+
+Three things to get right:
+
+- **Register the `current` junction, not the versioned directory**, or every update orphans
+  the registration — `InprocServer32` would point into a deleted path. The `post_install`
+  expression above resolves to the junction whether Scoop hands you `…\tinyxnb\current` or
+  `…\tinyxnb\26.8.11` as `$dir`, so it is correct either way and needs no assumption about
+  Scoop's internals.
+- **`pre_uninstall`, not `post_uninstall`.** Explorer holds `XnbThumbnail.comhost.dll` open
+  while loaded, so `scoop update` and `scoop uninstall` fail with a file lock unless the
+  handler is unregistered and Explorer restarted first.
+- **Check for .NET 8 in `pre_install`, not `depends`.** No bucket carries a runtime-only
+  .NET package — only SDKs, which are far heavier and install into Scoop's own tree rather
+  than where the COM host looks. A `depends` on the wrong package breaks installation
+  outright, so the manifest probes for `Microsoft.NETCore.App` 8.x directly and aborts with
+  instructions before anything is registered.
+
+`scoop install -g` installs machine-wide; pass `-Scope Machine` to both scripts for that,
+from an elevated shell.
+
 ## Why it exists
 
 There is no existing thumbnail provider, preview handler, or WIC codec for `.xnb` — not on
@@ -118,62 +223,6 @@ thumbnail handler **does** require the .NET 8 desktop runtime on the target mach
 hosting starts the runtime through `hostfxr_initialize_for_runtime_config`, which cannot
 load a self-contained `runtimeconfig.json`. Both binaries must be x64; 64-bit Explorer will
 silently never call a 32-bit build.
-
-## Installing
-
-Per-user, no elevation — `install.ps1` writes only under `HKCU\Software\Classes`, and
-`uninstall.ps1` removes every key it wrote.
-
-```powershell
-.\install.ps1 -RestartExplorer          # copies to %LOCALAPPDATA%\Programs\tinyxnb
-.\uninstall.ps1 -RemoveFiles -RestartExplorer
-```
-
-Explorer must restart before the handler is loaded — `SHChangeNotify` is enough to make the
-verbs appear, but not to make Explorer load a newly-registered handler DLL. Run both from
-**64-bit** PowerShell: a 32-bit host's `HKCU\Software\Classes\CLSID` writes are redirected
-into `Wow6432Node`, where 64-bit Explorer will never look, and the symptom is simply that
-nothing happens.
-
-`install.ps1 -ClearThumbnailCache` is a testing aid. Once Explorer has cached a thumbnail it
-will not call the handler again for that file — not after a rebuild, and not after a rename
-or move — so a stale thumbnail is indistinguishable from a broken handler.
-
-### Scoop
-
-`-InPlace` registers the binaries where they already sit, leaving Scoop in charge of the
-files:
-
-```json
-{
-    "version": "0.1.0",
-    "description": "Explorer thumbnails and a Save as PNG verb for XNA/MonoGame .xnb files",
-    "license": "MIT",
-    "architecture": {
-        "64bit": { "url": "...tinyxnb-0.1.0-win-x64.zip", "hash": "..." }
-    },
-    "bin": "xnb2png.exe",
-    "post_install":  [ "& \"$dir\\install.ps1\" -InPlace -RestartExplorer" ],
-    "pre_uninstall": [ "& \"$dir\\uninstall.ps1\" -RestartExplorer" ]
-}
-```
-
-Three things to get right:
-
-- **Register the `current` junction, not the versioned directory**, or every update orphans
-  the registration. Scoop reassigns `$dir` to the `current` path before `post_install` runs,
-  so the snippet above is correct — but verify it against your Scoop version, and pass
-  `-SourceDir` explicitly if you'd rather not rely on it.
-- **`pre_uninstall`, not `post_uninstall`.** Explorer holds `XnbThumbnail.comhost.dll` open
-  while loaded, so `scoop update` and `scoop uninstall` fail with a file lock unless the
-  handler is unregistered and Explorer restarted first.
-- **Declare the .NET 8 dependency.** The handler needs `Microsoft.NETCore.App` **8.x**
-  specifically — roll-forward does not cross major versions, so a 9.x or 10.x runtime will
-  not satisfy it. The desktop runtime is a superset and also works. `install.ps1` checks and
-  fails with instructions if it's absent.
-
-`scoop install -g` installs machine-wide; pass `-Scope Machine` to both scripts for that,
-from an elevated shell.
 
 ## Licensing
 
