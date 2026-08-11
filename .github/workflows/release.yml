@@ -118,7 +118,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create '${{ github.ref_name }}' `
-            tinyxnb-*.zip tinyxnb-*.zip.sha256 `
+          # Name the assets explicitly. PowerShell does not glob-expand arguments to native
+          # executables, and gh does not expand them itself on Windows, so a wildcard here
+          # would be passed through literally and the upload would fail.
+          $zip = 'tinyxnb-${{ steps.version.outputs.version }}-win-x64.zip'
+          gh release create '${{ github.ref_name }}' $zip "$zip.sha256" `
             --title 'tinyxnb ${{ steps.version.outputs.version }}' `
             --generate-notes

@@ -16,7 +16,7 @@ namespace XnbThumbnail
     [ProgId("XnbShell.ThumbnailProvider")]
     public sealed class XnbThumbnailProvider : IInitializeWithStream, IThumbnailProvider
     {
-        public const string ClsidString = "017DC839-2FD6-4917-855E-1807CA2942AF";
+        public const string ClsidString = "7E723B1E-5565-4E10-8F83-9676C8CDF2F0";
 
         /// <summary>Refuse absurd inputs rather than let dllhost balloon on a malformed header.</summary>
         private const int MaxSourceEdge = 16384;

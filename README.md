@@ -10,16 +10,6 @@ their art as `.xnb`.
 
 ## Installing
 
-**Scoop is the canonical way to install tinyxnb.** It handles the download, the hash check,
-registration, updates and clean removal, and it needs no administrator rights.
-
-```powershell
-scoop bucket add regulad https://github.com/regulad/scoop-regulad
-scoop install regulad/tinyxnb
-```
-
-Explorer is restarted as part of the install, so thumbnails appear immediately.
-
 ### Prerequisite: the .NET 8 runtime
 
 The only thing Scoop cannot install for you — no bucket carries a runtime-only .NET package.
@@ -48,6 +38,18 @@ setx DOTNET_ROOT "$env:LOCALAPPDATA\Microsoft\dotnet"
 `DOTNET_ROOT` is the first location both the COM host and `install.ps1` consult, so a
 per-user runtime works — but Explorer must be restarted afterwards to inherit the variable.
 
+### Automated install via Scoop
+
+**Scoop is the canonical way to install tinyxnb.** It handles the download, the hash check,
+registration, updates and clean removal, and it needs no administrator rights.
+
+```powershell
+scoop bucket add regulad https://github.com/regulad/scoop-regulad
+scoop install regulad/tinyxnb
+```
+
+Explorer is restarted as part of the install, so thumbnails appear immediately.
+
 ### Manual install
 
 For working from a source tree or a release zip without Scoop. Per-user and unelevated:
@@ -75,6 +77,21 @@ Releases are versioned by date as `yy.M.d`, unpadded — today's would be `26.8.
 built and published by `.github/workflows/release.yml` when a `v*` tag is pushed. Each
 release carries a `.sha256` sidecar next to the zip so a bucket's autoupdate can pick the
 hash up without a human.
+
+**Lint the workflow with [actionlint](https://github.com/rhysd/actionlint) before pushing
+changes to it.** A release workflow only ever runs on a tag, so a mistake in it surfaces at
+the worst possible moment: the tag already exists and the release has already failed.
+
+```powershell
+scoop install actionlint
+actionlint                    # checks everything under .github/workflows
+```
+
+actionlint catches expression, context and syntax errors, but not argument handling inside
+`run:` blocks — it will not tell you that PowerShell doesn't glob-expand arguments to native
+executables, for instance. For a genuine end-to-end rehearsal, use the workflow's
+`workflow_dispatch` trigger: it builds and uploads the artifact but skips the release step,
+so you can confirm the pipeline works *before* creating a tag you cannot cleanly undo.
 
 `-InPlace` registers the binaries where they already sit, leaving Scoop in charge of the
 files:

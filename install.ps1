@@ -57,7 +57,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Fixed. Must match XnbThumbnailProvider.ClsidString. Never regenerate it.
-$Clsid = '{017DC839-2FD6-4917-855E-1807CA2942AF}'
+$Clsid = '{7E723B1E-5565-4E10-8F83-9676C8CDF2F0}'
 # IThumbnailProvider's interface GUID, fixed by Windows.
 $ThumbnailHandlerIid = '{e357fccd-a995-4576-b01f-234630154e96}'
 
