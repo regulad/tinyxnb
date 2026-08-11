@@ -27,11 +27,14 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # Actions are pinned to commit SHAs, not tags: a tag can be moved to point at new
+      # code, a SHA cannot. The trailing comment is the human-readable version -- keep it
+      # in step with the SHA when bumping.
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
 
@@ -104,7 +107,7 @@ jobs:
           Write-Host "$name  $hash"
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tinyxnb-win-x64
           path: |
