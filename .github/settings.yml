@@ -1,14 +1,12 @@
-# Repository settings as code, applied by the Probot "Settings" GitHub App:
-#   https://github.com/apps/settings
-#
-# The app must be installed on this repository (or the owning account) for this file to do
-# anything at all -- it is inert otherwise. Changes are applied when this file is pushed to
-# the default branch.
+# Repository configuration, managed by the Settings app
+# (https://github.com/repository-settings/app). The shared defaults come from
+# regulad/.github; this file sets only what is this repository's own.
 #
 # Two footguns worth knowing before editing:
 #   - Changing `name` RENAMES the repository.
 #   - Changing `default_branch` renames the default branch.
 # Both are applied silently and immediately.
+_extends: .github
 
 repository:
   name: tinyxnb
@@ -16,19 +14,10 @@ repository:
     Native Windows Explorer thumbnails for XNA/MonoGame .xnb texture files,
     plus a right-click "Save as PNG" verb.
   homepage: https://github.com/regulad/scoop-regulad
-
+  private: false
+  # Topics: comma-and-space separated string, NOT a YAML list.
   # Lowercase, digits and hyphens only; GitHub allows at most 20.
   topics: xnb, xna, monogame, fna, thumbnail-provider, shell-extension, windows-explorer, texture-decoder, dxt, bcn, dotnet, csharp, com, scoop, stardew-valley
-
-  private: false
   default_branch: main
 
-  has_issues: true
-  has_wiki: false
-  has_projects: false
-  has_downloads: true
-
-  allow_squash_merge: true
   allow_merge_commit: true
-  allow_rebase_merge: true
-  delete_branch_on_merge: true
