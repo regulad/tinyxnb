@@ -150,7 +150,7 @@
       "Sentry": {
         "type": "Transitive",
         "resolved": "6.12.1",
-        "contentHash": "Ol4PpusY0YNsiPGNOKe7LJgMV6P8ABWa8b7XF44ELM7JrzCnua5FYMZcEFrf4lk7m6g9sttxXJ74iCAGBovsoA=="
+        "contentHash": "yCHz3cLGZ3TVik3rLV6rp6SaqJ0Ai7PyIi2KdoHNGpZYWEkcX7kx13IV46mufAzPW7pqZZoKNoru0w0RpmkmrA=="
       },
       "System.Diagnostics.DiagnosticSource": {
         "type": "Transitive",

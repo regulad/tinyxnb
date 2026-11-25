@@ -22,7 +22,7 @@ This is used only to diagnose and improve tinyxnb. It isn't sold, shared for adv
 
 ## Turning diagnostics off
 
-Set the environment variable `DO_NOT_TRACK` to `1` (any value but empty will do), for instance with `setx DO_NOT_TRACK 1`, and tinyxnb sends nothing. Each program reads it when it starts:
+Set the environment variable `DO_NOT_TRACK` to `1` (any value but empty, `0` or `false` will do), for instance with `setx DO_NOT_TRACK 1`, and tinyxnb sends nothing. Each program reads it when it starts:
 
 - **`xnb2png`** sees it from its next run.
 - **The thumbnail handler** runs in a process Windows starts for Explorer, which sees a new setting only once it is started again: sign out and back in, or restart Explorer.

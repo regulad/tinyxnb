@@ -59,9 +59,14 @@ namespace Tinyxnb
 
         /// <summary>
         /// Whether a <c>DO_NOT_TRACK</c> of <paramref name="value"/> asks for no tracking: set to
-        /// anything but empty, as consoledonottrack.com defines it.
+        /// anything but empty, <c>0</c> or <c>false</c> (in any case), once trimmed, as Warlock's
+        /// <c>do_not_track</c> reads it.
         /// </summary>
-        internal static bool DoNotTrack(string value) => !string.IsNullOrEmpty(value);
+        internal static bool DoNotTrack(string value)
+        {
+            string v = value?.Trim();
+            return !string.IsNullOrEmpty(v) && v != "0" && !string.Equals(v, "false", StringComparison.OrdinalIgnoreCase);
+        }
 
         /// <summary>Whether to start Sentry, with this build's DSN and this <c>DO_NOT_TRACK</c>.</summary>
         internal static bool ShouldStart(string dsn, string doNotTrack) =>

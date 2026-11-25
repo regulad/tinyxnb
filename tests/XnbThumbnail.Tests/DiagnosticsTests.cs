@@ -46,8 +46,12 @@ namespace XnbThumbnail.Tests
             Assert.IsTrue(SentryDiagnostics.ShouldStart(SomeDsn, null));
             Assert.IsTrue(SentryDiagnostics.ShouldStart(SomeDsn, ""));
 
-            // Any value but empty, as consoledonottrack.com defines it.
-            foreach (string value in new[] { "1", "true", "0", "false", "yes" })
+            // Empty, 0 and false, in any case and trimmed, leave diagnostics on, as Warlock reads them.
+            foreach (string value in new[] { "0", "false", "FALSE", " 0 ", "  " })
+                Assert.IsTrue(SentryDiagnostics.ShouldStart(SomeDsn, value), $"DO_NOT_TRACK={value}");
+
+            // Anything else turns them off.
+            foreach (string value in new[] { "1", "true", "yes", " 1 " })
                 Assert.IsFalse(SentryDiagnostics.ShouldStart(SomeDsn, value), $"DO_NOT_TRACK={value}");
 
             Assert.IsFalse(SentryDiagnostics.ShouldStart("", null), "No DSN, nothing to start.");
