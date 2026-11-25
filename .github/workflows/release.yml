@@ -67,6 +67,19 @@ jobs:
           dotnet publish src/Xnb2Png/Xnb2Png.csproj -c Release
           dotnet publish src/XnbThumbnail/XnbThumbnail.csproj -c Release
 
+      # The handler's tests, all in-process: the provider fed a Shell memory stream, and the
+      # built comhost activated through DllGetClassObject. The Shell's own extraction needs the
+      # handler installed, so it runs after staging, below. See tests/XnbThumbnail.Tests.
+      - name: Test
+        run: dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --filter "TestCategory!=Shell" --logger "console;verbosity=normal"
+
+      - name: Upload lock file (temporary)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-lock
+          path: tests/XnbThumbnail.Tests/packages.lock.json
+
       - name: Stage package
         shell: pwsh
         run: |
@@ -102,6 +115,27 @@ jobs:
           if ($missing) { throw "Package is missing: $($missing -join ', ')" }
 
           Get-ChildItem $stage -Recurse -File | ForEach-Object { $_.FullName.Replace("$PWD\", '') }
+
+      # The real Explorer path: install the staged package per-user, as a user would, then have
+      # the Shell extract a thumbnail through IShellItemImageFactory, which runs the handler in
+      # dllhost.exe. The runner is a Windows Server image, so make sure thumbnails are on first.
+      - name: Install the staged package
+        shell: pwsh
+        run: |
+          $advanced = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+          New-Item -Path $advanced -Force | Out-Null
+          New-ItemProperty -LiteralPath $advanced -Name IconsOnly -Value 0 -PropertyType DWord -Force | Out-Null
+          ./stage/install.ps1
+
+      - name: Test through the Shell
+        env:
+          TINYXNB_REQUIRE_SHELL: '1'
+        run: dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --no-build --filter "TestCategory=Shell" --logger "console;verbosity=normal"
+
+      - name: Uninstall
+        if: always() && hashFiles('stage/uninstall.ps1') != ''
+        shell: pwsh
+        run: ./stage/uninstall.ps1 -RemoveFiles
 
       - name: Archive
         shell: pwsh

@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests for the thumbnail handler, modelled on PowerToys' previewpane UnitTests-*ThumbnailProvider
+    projects: MSTest, constructing the provider and calling GetThumbnail. Three layers, from the
+    cheapest to the most real:
+
+      ThumbnailProviderTests    the provider in-process, fed a shell memory IStream
+      ComHostActivationTests    XnbThumbnail.comhost.dll's DllGetClassObject, called through raw vtables
+      ShellTests                [TestCategory("Shell")]: the Shell's own extraction, in dllhost.exe,
+                                which needs install.ps1 to have run first
+
+    Every XNB is built in memory by XnbBuilder; no game asset is ever committed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>XnbThumbnail.Tests</AssemblyName>
+    <RootNamespace>XnbThumbnail.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+
+    <!-- The handler is x64-only, and so is anything that loads it in-process. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+
+    <!-- The comhost tests call COM vtables through function pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- packages.lock.json is setup-dotnet's NuGet cache key in release.yml. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The meta-package, as PowerToys uses: framework, adapter, analyzers and Microsoft.NET.Test.Sdk. -->
+    <PackageReference Include="MSTest" Version="4.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\XnbCore\XnbCore.csproj" />
+    <ProjectReference Include="..\..\src\XnbThumbnail\XnbThumbnail.csproj" />
+  </ItemGroup>
+
+  <!--
+    ComHostActivationTests loads XnbThumbnail.comhost.dll from XnbThumbnail's own build output,
+    where its runtimeconfig.json and deps.json sit beside it; neither is copied into this
+    project's output. Record that directory, as MSBuild resolved the reference, so the test
+    never guesses at a configuration, TFM or RID.
+  -->
+  <Target Name="RecordComHostPath" DependsOnTargets="ResolveProjectReferences" BeforeTargets="GetAssemblyAttributes">
+    <ItemGroup>
+      <_XnbThumbnailOutput Include="@(_ResolvedProjectReferencePaths)" Condition="'%(Filename)' == 'XnbThumbnail'" />
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>XnbThumbnailComHost</_Parameter1>
+        <_Parameter2>@(_XnbThumbnailOutput->'%(RootDir)%(Directory)%(Filename).comhost.dll')</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+    <Error Condition="'@(_XnbThumbnailOutput)' == ''" Text="Could not resolve XnbThumbnail's build output." />
+  </Target>
+
+</Project>
