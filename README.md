@@ -224,8 +224,8 @@ Two gaps worth knowing about:
   come from synthetic streams that exercise the framing and the wiring but never touch the
   Huffman path. The decoders themselves are MonoGame's and are battle-tested; the wiring
   around them is ours. Any Stardew Valley or Terraria `Content/` folder is a good corpus.
-- The BC1/BC2/BC3 and `Bgra4444` results were produced on Linux during development and have
-  not been re-run on Windows.
+- The Pillow comparisons for BC1/BC2/BC3, and the `Bgra4444` corpus check, ran on Linux during
+  development. On Windows, only the test project's single BC1 block runs, in CI.
 
 ## Building
 
