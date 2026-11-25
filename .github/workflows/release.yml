@@ -245,10 +245,14 @@ jobs:
       - name: Upload
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        # The artifact keeps the files' publish directories under debug-files/ (upload-artifact
+        # keeps the paths below their common ancestor, src/), so match them at any depth, and
+        # give the upload the directory, which sentry-cli scans recursively.
         run: |
+          shopt -s globstar failglob
           cli="$RUNNER_TEMP/sentry-cli"
-          for f in debug-files/*.pdb; do "$cli" debug-files check "$f"; done
-          "$cli" debug-files upload -o regulad -p tinyxnb --wait debug-files/*.pdb
+          for f in debug-files/**/*.pdb; do "$cli" debug-files check "$f"; done
+          "$cli" debug-files upload -o regulad -p tinyxnb --wait debug-files
 
   # The release in Sentry, tinyxnb@<version> as both programs name it
   # (src/Diagnostics/SentryDiagnostics.cs), with the commits since the last one, finalized,
