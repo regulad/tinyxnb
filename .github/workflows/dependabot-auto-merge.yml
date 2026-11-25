@@ -1,0 +1,40 @@
+name: Dependabot auto-merge
+
+# Turns on GitHub's auto-merge for Dependabot's updates that aren't major: the nuget group, which holds only minor and
+# patch updates (see dependabot.yml), and security updates, which skip the cooldown and are merged too. GitHub then
+# merges each one once the release workflow's build passes (.github/settings.yml). A merge publishes nothing: only a
+# tag makes a release.
+#
+# GitHub Actions updates and major updates wait for a person.
+#
+# Auto-merge is turned on with the DEPENDABOT_MERGE_TOKEN secret, not GITHUB_TOKEN. GitHub credits the merge to whoever
+# turned auto-merge on, and starts no workflows for a push credited to GITHUB_TOKEN. The token is a fine-grained
+# personal access token for this repository only, with read and write access to Contents and Pull requests. It has no
+# access to workflows, so it couldn't merge the GitHub Actions updates even by mistake. It's a Dependabot secret because
+# runs started by Dependabot can only read Dependabot secrets.
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  auto-merge:
+    # Only for Dependabot's own pushes. A person who pushes to its pull request takes the pull request over and merges
+    # it themselves; their push's run can't read Dependabot secrets in any case.
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to commit SHAs, not tags; the trailing comment is the version.
+      - id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+      - name: Merge once CI passes
+        if: >-
+          steps.metadata.outputs.update-type != 'version-update:semver-major'
+          && steps.metadata.outputs.package-ecosystem != 'github_actions'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.DEPENDABOT_MERGE_TOKEN }}

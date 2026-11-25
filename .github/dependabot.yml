@@ -1,0 +1,39 @@
+# Dependabot keeps every pinned version current: the projects' NuGet packages and GitHub Actions. The projects
+# reference no NuGet packages yet; the entry is here so that the first one is kept current from the start. The
+# MonoGame decompressors XnbCore downloads are pinned in XnbCore.csproj (MonoGameRef), which Dependabot doesn't read.
+#
+# Each ecosystem gets one PR a week grouping its minor and patch updates. workflows/dependabot-auto-merge.yml has GitHub
+# merge the nuget group, and security updates, once the release workflow's build passes. These wait for a person:
+# - the actions group, since workflow changes get a review;
+# - major updates, which come as PRs of their own.
+#
+# The cooldown holds each release back until it is two weeks old, so nothing ships while it's days old. Security
+# updates skip it.
+version: 2
+
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "America/New_York"
+    cooldown:
+      default-days: 14
+    groups:
+      nuget:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "America/New_York"
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        update-types: ["minor", "patch"]

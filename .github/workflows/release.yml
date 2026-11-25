@@ -7,11 +7,17 @@ name: Release
 #
 # Produces tinyxnb-<version>-win-x64.zip plus a .sha256 sidecar. The sidecar is what the
 # Scoop manifest's autoupdate block reads, so excavator can bump the hash without a human.
+#
+# Pull requests run the same build and packaging, as today's version, without the release:
+# it's the check they need to pass (.github/settings.yml).
 
 on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version:
@@ -42,8 +48,9 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $v = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
-              # Date-based scheme: yy.M.d, unpadded. A manual run with no input means "today".
+          $v = if ('${{ github.event_name }}' -ne 'push') {
+              # Date-based scheme: yy.M.d, unpadded. A manual run with no input, or a pull
+              # request, means "today".
               if ('${{ inputs.version }}') { '${{ inputs.version }}' }
               else { (Get-Date).ToString('yy.M.d') }
           } else {
