@@ -55,6 +55,15 @@ libraries, © Microsoft Corporation, licensed under the MIT License
 (<https://github.com/dotnet/runtime/blob/main/LICENSE.TXT>). Redistribution in this form is
 expressly permitted. `XnbThumbnail.comhost.dll` is framework-dependent and embeds nothing.
 
+## Sentry SDK for .NET
+
+Both binaries carry the `Sentry` NuGet package, the version `src/Diagnostics/Diagnostics.props`
+pins, © 2018 Sentry, under the MIT License, for the crash reports and usage counts
+[PRIVACY.md](PRIVACY.md) describes: as `Sentry.dll` beside the thumbnail handler, and inside
+the self-contained `xnb2png.exe`. MIT is compatible with this project's MIT licence and with
+Ms-PL. Its notice, from sentry-dotnet's `LICENSE`, is kept in
+[`licenses/Sentry-LICENSE.txt`](licenses/Sentry-LICENSE.txt) and ships with every release.
+
 ## Test assets
 
 MonoGame's `Tests/Assets/Textures/*.xnb` are used during development and are **not**

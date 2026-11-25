@@ -33,6 +33,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\XnbCore\XnbCore.csproj" />
+    <!-- The tests check that a build without the DSN starts nothing. -->
+    <InternalsVisibleTo Include="XnbThumbnail.Tests" />
   </ItemGroup>
+
+  <Import Project="..\Diagnostics\Diagnostics.props" />
 
 </Project>

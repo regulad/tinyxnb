@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using Sentry;
+using Tinyxnb;
 using XnbCore;
 
 namespace XnbThumbnail
@@ -46,8 +48,13 @@ namespace XnbThumbnail
             phbmp = IntPtr.Zero;
             pdwAlpha = WtsAlphaType.Unknown;
 
-            if (_bytes == null) return Hr.E_FAIL;
-            if (cx == 0 || cx > 4096) return Hr.E_INVALIDARG;
+            // One `thumbnail` transaction per call, the usage count (PRIVACY.md): the requested
+            // size and the surface format, never anything about the file itself. Null when
+            // diagnostics are off, as in any build but a release, or under DO_NOT_TRACK.
+            ITransactionTracer run = StartRun(cx);
+
+            if (_bytes == null) return Done(run, SpanStatus.FailedPrecondition, Hr.E_FAIL);
+            if (cx == 0 || cx > 4096) return Done(run, SpanStatus.InvalidArgument, Hr.E_INVALIDARG);
 
             try
             {
@@ -55,8 +62,10 @@ namespace XnbThumbnail
                 using (MemoryStream ms = new MemoryStream(_bytes, false))
                     image = XnbImage.Load(ms);
 
+                run?.SetTag("format", image.Format.ToString());
+
                 if (image.Width > MaxSourceEdge || image.Height > MaxSourceEdge)
-                    return Hr.E_FAIL;
+                    return Done(run, SpanStatus.ResourceExhausted, Hr.E_FAIL);
 
                 int w, h;
                 // Explorer composites with premultiplied alpha, which is exactly how the
@@ -64,22 +73,54 @@ namespace XnbThumbnail
                 byte[] rgba = Resampler.Fit(image.PremultipliedRgba, image.Width, image.Height, (int)cx, out w, out h);
 
                 IntPtr hbmp = CreateDib(rgba, w, h);
-                if (hbmp == IntPtr.Zero) return Hr.E_OUTOFMEMORY;
+                if (hbmp == IntPtr.Zero) return Done(run, SpanStatus.ResourceExhausted, Hr.E_OUTOFMEMORY);
 
                 phbmp = hbmp;
                 pdwAlpha = WtsAlphaType.Argb;
-                return Hr.S_OK;
+                return Done(run, SpanStatus.Ok, Hr.S_OK);
             }
             catch (XnbFormatException)
             {
                 // Not a texture (font, model, data table) or not an XNB at all: let Explorer
-                // fall back to the generic icon instead of showing a broken thumbnail.
-                return Hr.WINCODEC_ERR_BADHEADER;
+                // fall back to the generic icon instead of showing a broken thumbnail. No fault
+                // of tinyxnb's, so it is counted but not reported.
+                return Done(run, SpanStatus.InvalidArgument, Hr.WINCODEC_ERR_BADHEADER);
             }
-            catch
+            catch (Exception ex)
             {
+                SentryDiagnostics.Capture(ex);
+                Done(run, SpanStatus.InternalError, Hr.E_FAIL);
+                // Failures are rare, and Explorer is waiting on this thumbnail: give the report a
+                // moment to leave, as dllhost.exe may exit before the SDK's background worker
+                // sends it, but no more.
+                SentryDiagnostics.Flush(ErrorFlushTimeout);
                 return Hr.E_FAIL;
             }
+        }
+
+        /// <summary>How long a failed thumbnail waits for its report to be sent.</summary>
+        private static readonly TimeSpan ErrorFlushTimeout = TimeSpan.FromMilliseconds(500);
+
+        /// <summary>
+        /// Sentry, started by the first thumbnail of this process and never before. Nothing
+        /// hooks the host process (SentryDiagnostics.Start): only what GetThumbnail catches is
+        /// reported. Null when diagnostics are off.
+        /// </summary>
+        private static readonly Lazy<IDisposable> Diagnostics =
+            new Lazy<IDisposable>(SentryDiagnostics.Start, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
+
+        private static ITransactionTracer StartRun(uint cx)
+        {
+            _ = Diagnostics.Value;
+            ITransactionTracer run = SentryDiagnostics.StartTransaction("thumbnail", "thumbnail.render");
+            run?.SetTag("cx", cx.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return run;
+        }
+
+        private static int Done(ITransactionTracer run, SpanStatus status, int hr)
+        {
+            SentryDiagnostics.Finish(run, status);
+            return hr;
         }
 
         private static IntPtr CreateDib(byte[] rgba, int width, int height)

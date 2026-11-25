@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using Sentry;
+using Tinyxnb;
 using XnbCore;
 
 namespace Xnb2Png
@@ -25,7 +27,46 @@ Options
         private static bool _quiet;
         private static bool _guiErrors;
 
+        /// <summary>Failures that were tinyxnb's fault, each reported to Sentry.</summary>
+        private static int _faults;
+
+        /// <summary>
+        /// One `convert` transaction per run, the usage count, and a report of any failure that
+        /// is tinyxnb's fault (PRIVACY.md); nothing from a build from source or under
+        /// DO_NOT_TRACK. xnb2png is its own process, so an exception that would end it is
+        /// reported here, before it does, and disposing the SDK flushes the report.
+        /// </summary>
         private static int Main(string[] args)
+        {
+            using (SentryDiagnostics.Start())
+            {
+                ITransactionTracer run = SentryDiagnostics.StartTransaction("convert", "convert.run");
+                try
+                {
+                    int code = Run(args, run);
+                    SentryDiagnostics.Finish(run,
+                        _faults > 0 ? SpanStatus.InternalError :
+                        code == 0 ? SpanStatus.Ok :
+                        SpanStatus.InvalidArgument);
+                    return code;
+                }
+                catch (Exception ex)
+                {
+                    SentryDiagnostics.Capture(ex, handled: false);
+                    SentryDiagnostics.Finish(run, SpanStatus.InternalError);
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether a file's failure is tinyxnb's fault, and so worth a report: not a file that
+        /// isn't a texture, or one that can't be read or written.
+        /// </summary>
+        private static bool IsFault(Exception ex) =>
+            !(ex is XnbFormatException || ex is IOException || ex is UnauthorizedAccessException);
+
+        private static int Run(string[] args, ITransactionTracer run)
         {
             if (args.Length == 0 || args[0] == "-h" || args[0] == "--help")
             {
@@ -58,6 +99,9 @@ Options
                         break;
                 }
             }
+
+            run?.SetTag("mode", info ? "info" : dirMode ? "dir" : "files");
+            run?.SetTag("shell_verb", _guiErrors ? "true" : "false");
 
             if (inputs.Count == 0) return Fail("No input given.");
 
@@ -113,11 +157,21 @@ Options
                 {
                     failures.Add(Path.GetFileName(file) + ": " + ex.Message);
                     Log("FAIL  " + file + ": " + ex.Message);
+                    if (IsFault(ex))
+                    {
+                        _faults++;
+                        SentryDiagnostics.Capture(ex);
+                    }
                 }
             }
 
             if (files.Count > 1)
                 Log(string.Format("--- {0} converted, {1} skipped, {2} failed", ok, skipped, failures.Count));
+
+            // How many, never which.
+            run?.SetMeasurement("files_converted", ok);
+            run?.SetMeasurement("files_skipped", skipped);
+            run?.SetMeasurement("files_failed", failures.Count);
 
             if (failures.Count > 0)
             {

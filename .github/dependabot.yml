@@ -1,5 +1,5 @@
-# Dependabot keeps every pinned version current: the projects' NuGet packages and GitHub Actions. The projects
-# reference no NuGet packages yet; the entry is here so that the first one is kept current from the start. The
+# Dependabot keeps every pinned version current: the projects' NuGet packages and GitHub Actions. Sentry is pinned in
+# src/Diagnostics/Diagnostics.props, which the handler's and xnb2png's projects import. The
 # MonoGame decompressors XnbCore downloads are pinned in XnbCore.csproj (MonoGameRef), which Dependabot doesn't read.
 #
 # Each ecosystem gets one PR a week grouping its minor and patch updates. workflows/dependabot-auto-merge.yml has GitHub

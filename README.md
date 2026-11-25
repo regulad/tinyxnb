@@ -50,6 +50,13 @@ scoop install regulad/tinyxnb
 
 Explorer is restarted as part of the install, so thumbnails appear immediately.
 
+### Privacy
+
+Releases send crash reports and anonymous usage counts (one per thumbnail and per `xnb2png`
+run) to Sentry; a build from source sends nothing. Never your files, their names or paths,
+or anything that identifies you. Set `DO_NOT_TRACK=1` to turn it off. The details are in
+[PRIVACY.md](PRIVACY.md).
+
 ### Manual install
 
 For working from a source tree or a release zip without Scoop. Per-user and unelevated:
@@ -149,7 +156,8 @@ image in there at all. That is a real decoder, not a thin wrapper.
 - Non-texture `.xnb` files must fail *cleanly* — the provider returns `WINCODEC_ERR_BADHEADER`
   so Explorer falls back to the generic icon rather than rendering something broken.
 - No runtime surprises inside `dllhost.exe`: no GDI+, no image libraries, no NuGet
-  dependencies in the decoder.
+  dependencies in the decoder. The handler's one package, Sentry, starts only on the first
+  thumbnail, hooks nothing in the host process, and reports only what the handler catches.
 
 ## Scope
 
@@ -176,6 +184,7 @@ src/XnbCore/        net8.0, portable, zero NuGet dependencies
   Vendor/           NOT source — fetched from MonoGame at build time, see below
 src/Xnb2Png/        self-contained CLI, xnb2png.exe — backs the context-menu verb
 src/XnbThumbnail/   COM IThumbnailProvider — XnbThumbnail.comhost.dll
+src/Diagnostics/    Sentry for the two programs above, imported by both (PRIVACY.md)
 ```
 
 The repo/product is `tinyxnb`; the binaries deliberately keep descriptive names
@@ -238,6 +247,10 @@ dotnet publish src/Xnb2Png/Xnb2Png.csproj      -c Release
 dotnet publish src/XnbThumbnail/XnbThumbnail.csproj -c Release
 ```
 
+A build like this has no Sentry DSN and sends nothing. Only `release.yml`'s build of a tag
+passes `-p:TinyxnbRelease=true`, which compiles the DSN in, and `-p:Version`, which names
+the release in Sentry; see `src/Diagnostics/`.
+
 **Runtime requirement:** `xnb2png.exe` is self-contained and needs nothing installed. The
 thumbnail handler **does** require the .NET 8 desktop runtime on the target machine — COM
 hosting starts the runtime through `hostfxr_initialize_for_runtime_config`, which cannot
@@ -260,6 +273,9 @@ anything:
 - Binary releases must carry [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and
   [licenses/MonoGame-v3.8.5-LICENSE.txt](licenses/MonoGame-v3.8.5-LICENSE.txt).
 - **Ms-PL is not GPL-compatible**, so these binaries cannot be combined into a GPL work.
+
+Both binaries also carry the Sentry SDK for .NET, under MIT; its notice ships as
+[licenses/Sentry-LICENSE.txt](licenses/Sentry-LICENSE.txt).
 
 Because `Vendor/` is `.gitignore`d and fetched rather than committed, this *repository*
 distributes no Ms-PL source — only the compiled artifacts do. Full detail in

@@ -147,6 +147,11 @@
           "MSTest.Analyzers": "4.5.3"
         }
       },
+      "Sentry": {
+        "type": "Transitive",
+        "resolved": "6.12.1",
+        "contentHash": "Ol4PpusY0YNsiPGNOKe7LJgMV6P8ABWa8b7XF44ELM7JrzCnua5FYMZcEFrf4lk7m6g9sttxXJ74iCAGBovsoA=="
+      },
       "System.Diagnostics.DiagnosticSource": {
         "type": "Transitive",
         "resolved": "5.0.0",
@@ -177,6 +182,7 @@
       "xnbthumbnail": {
         "type": "Project",
         "dependencies": {
+          "Sentry": "[6.12.1, )",
           "XnbCore": "[1.0.0, )"
         }
       }

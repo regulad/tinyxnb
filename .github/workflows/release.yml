@@ -10,6 +10,15 @@ name: Release
 #
 # Pull requests run the same build and packaging, as today's version, without the release:
 # it's the check they need to pass (.github/settings.yml).
+#
+# Only a tag's build compiles Sentry's DSN in (-p:TinyxnbRelease=true; src/Diagnostics,
+# PRIVACY.md), so a pull request's build, the tests and a build from source send nothing. A
+# tag's debug files then go to Sentry, so that the crashes both programs report name their
+# functions, files and lines, from a job of its own: it alone has the Sentry token, and it runs
+# nothing built here, only sentry-cli, pinned by its SHA-256, which reads the files. Once the
+# GitHub release is published, another such job makes it a release in Sentry, tinyxnb@<version>,
+# with its commits, finalized, with a deploy to `production`. Both follow regulad/Warlock's
+# build.yml.
 
 on:
   push:
@@ -65,15 +74,29 @@ jobs:
 
       # The first build downloads the vendored MonoGame decompressors into
       # src/XnbCore/Vendor/, which is why this step needs network access.
+      #
+      # The version names the release in Sentry (tinyxnb@<version>), and only a tag's build
+      # gets the DSN (src/Diagnostics/Diagnostics.props).
       - name: Publish
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TINYXNB_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
-          dotnet publish src/Xnb2Png/Xnb2Png.csproj -c Release
-          dotnet publish src/XnbThumbnail/XnbThumbnail.csproj -c Release
+          dotnet publish src/Xnb2Png/Xnb2Png.csproj -c Release "-p:Version=$env:VERSION" "-p:TinyxnbRelease=$env:TINYXNB_RELEASE"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet publish src/XnbThumbnail/XnbThumbnail.csproj -c Release "-p:Version=$env:VERSION" "-p:TinyxnbRelease=$env:TINYXNB_RELEASE"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       # The handler's tests, all in-process: the provider fed a Shell memory stream, and the
       # built comhost activated through DllGetClassObject. The Shell's own extraction needs the
       # handler installed, so it runs after staging, below. See tests/XnbThumbnail.Tests.
+      #
+      # This builds the handler again, without the DSN, so the tests send nothing; the published
+      # binaries above keep theirs. DO_NOT_TRACK makes sure of it.
       - name: Test
+        env:
+          DO_NOT_TRACK: '1'
         run: dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --filter "TestCategory!=Shell" --logger "console;verbosity=normal"
 
       - name: Stage package
@@ -87,10 +110,10 @@ jobs:
           Copy-Item 'src/XnbThumbnail/bin/Release/net8.0-windows/win-x64/publish/*' $stage -Exclude '*.pdb'
           Copy-Item 'src/Xnb2Png/bin/Release/net8.0/win-x64/publish/xnb2png.exe' $stage
 
-          Copy-Item 'install.ps1', 'uninstall.ps1', 'README.md' $stage
+          Copy-Item 'install.ps1', 'uninstall.ps1', 'README.md', 'PRIVACY.md' $stage
           # Ms-PL requires the notices to travel with the compiled binaries; the vendored
           # decompressors are inside XnbCore.dll. Shipping these is a licence obligation,
-          # not a courtesy. See THIRD-PARTY-NOTICES.md.
+          # not a courtesy, as is Sentry's MIT notice. See THIRD-PARTY-NOTICES.md.
           Copy-Item 'LICENSE', 'THIRD-PARTY-NOTICES.md' $stage
           Copy-Item 'licenses' $stage -Recurse
 
@@ -101,11 +124,14 @@ jobs:
               'XnbThumbnail.deps.json'
               'XnbThumbnail.runtimeconfig.json'
               'XnbCore.dll'
+              'Sentry.dll'
               'xnb2png.exe'
               'install.ps1'
               'uninstall.ps1'
+              'PRIVACY.md'
               'THIRD-PARTY-NOTICES.md'
               'licenses/MonoGame-v3.8.5-LICENSE.txt'
+              'licenses/Sentry-LICENSE.txt'
           )
           $missing = $required | Where-Object { -not (Test-Path (Join-Path $stage $_)) }
           if ($missing) { throw "Package is missing: $($missing -join ', ')" }
@@ -120,9 +146,14 @@ jobs:
       # class registrations for such a process, so a per-user install fails here with
       # REGDB_E_CLASSNOTREG (0x80040154). The staged package's own scripts still do the work.
       # IconsOnly=0 makes sure the Server image's Explorer settings allow thumbnails.
+      #
+      # A tag's staged handler has the DSN, and the dllhost.exe that COM starts for it reads the
+      # machine's environment, not this step's: DO_NOT_TRACK set machine-wide keeps the Shell
+      # test's thumbnails out of the usage counts.
       - name: Install the staged package
         shell: pwsh
         run: |
+          [Environment]::SetEnvironmentVariable('DO_NOT_TRACK', '1', 'Machine')
           $advanced = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
           New-Item -Path $advanced -Force | Out-Null
           New-ItemProperty -LiteralPath $advanced -Name IconsOnly -Value 0 -PropertyType DWord -Force | Out-Null
@@ -131,6 +162,7 @@ jobs:
       - name: Test through the Shell
         env:
           TINYXNB_REQUIRE_SHELL: '1'
+          DO_NOT_TRACK: '1'
         run: dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --no-build --filter "TestCategory=Shell" --logger "console;verbosity=normal"
 
       - name: Uninstall
@@ -157,6 +189,21 @@ jobs:
             tinyxnb-*.zip.sha256
           if-no-files-found: error
 
+      # The portable PDBs of the published binaries, which the package leaves out, for the
+      # debug-files job: Sentry symbolicates both programs' frames from them. Taken from the
+      # publish directories, as the Test step rebuilt the handler and XnbCore elsewhere.
+      - name: Upload debug files
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: debug-files
+          path: |
+            src/XnbThumbnail/bin/Release/net8.0-windows/win-x64/publish/XnbThumbnail.pdb
+            src/XnbThumbnail/bin/Release/net8.0-windows/win-x64/publish/XnbCore.pdb
+            src/Xnb2Png/bin/Release/net8.0/win-x64/publish/xnb2png.pdb
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -170,3 +217,80 @@ jobs:
           gh release create '${{ github.ref_name }}' $zip "$zip.sha256" `
             --title 'tinyxnb ${{ steps.version.outputs.version }}' `
             --generate-notes
+
+  # A tag's portable PDBs to Sentry's tinyxnb project, as regulad/Warlock's build.yml sends
+  # its debug files: from a job that has the Sentry token and runs nothing built here.
+  debug-files:
+    name: Debug files to Sentry
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: debug-files
+          path: debug-files
+      - name: sentry-cli
+        env:
+          VERSION: 3.8.2
+          SHA256: c958865f9d4000183509ea21b1f04925d5390de6d8d87386b9e69f2b305070c3
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/sentry-cli" \
+            "https://github.com/getsentry/sentry-cli/releases/download/$VERSION/sentry-cli-Linux-x86_64"
+          echo "$SHA256  $RUNNER_TEMP/sentry-cli" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/sentry-cli"
+      - name: Upload
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          cli="$RUNNER_TEMP/sentry-cli"
+          for f in debug-files/*.pdb; do "$cli" debug-files check "$f"; done
+          "$cli" debug-files upload -o regulad -p tinyxnb --wait debug-files/*.pdb
+
+  # The release in Sentry, tinyxnb@<version> as both programs name it
+  # (src/Diagnostics/SentryDiagnostics.cs), with the commits since the last one, finalized,
+  # and a deploy to `production`: when it was published. As regulad/Warlock's build.yml.
+  sentry-release:
+    name: Release in Sentry
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SENTRY_ORG: regulad
+    steps:
+      - name: sentry-cli
+        env:
+          VERSION: 3.8.2
+          SHA256: c958865f9d4000183509ea21b1f04925d5390de6d8d87386b9e69f2b305070c3
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/sentry-cli" \
+            "https://github.com/getsentry/sentry-cli/releases/download/$VERSION/sentry-cli-Linux-x86_64"
+          echo "$SHA256  $RUNNER_TEMP/sentry-cli" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/sentry-cli"
+      - name: Release
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: '"$RUNNER_TEMP/sentry-cli" releases new "tinyxnb@${TAG#v}" -p tinyxnb'
+      # Through Sentry's GitHub integration. Reports differ on whether an organization token
+      # (Sentry's `org:ci` scope) may do this: if it can't, the run shows the failure, and the
+      # release goes on without its commits.
+      - name: Commits
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: '"$RUNNER_TEMP/sentry-cli" releases set-commits "tinyxnb@${TAG#v}" --commit "$GITHUB_REPOSITORY@$GITHUB_SHA"'
+      - name: Finalize and deploy
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          "$RUNNER_TEMP/sentry-cli" releases finalize "tinyxnb@${TAG#v}"
+          "$RUNNER_TEMP/sentry-cli" deploys new --release "tinyxnb@${TAG#v}" -e production

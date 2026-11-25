@@ -1,0 +1,27 @@
+<Project>
+
+  <!--
+    Sentry for the thumbnail handler and xnb2png, which both import this file; PRIVACY.md says what
+    they send, and SentryDiagnostics.cs how. XnbCore, the decoder, takes no NuGet package.
+
+    The DSN is compiled in only when release.yml passes -p:TinyxnbRelease=true, which it does only
+    for a tag: a build from source, a pull request's or the tests' sends nothing. -p:Version names
+    the release in Sentry, tinyxnb@<version>, as release.yml creates it.
+  -->
+  <PropertyGroup>
+    <DefineConstants Condition="'$(TinyxnbRelease)' == 'true'">$(DefineConstants);TINYXNB_RELEASE</DefineConstants>
+    <!-- sentry-native is only for Native AOT, which neither program is. -->
+    <SentryNative>false</SentryNative>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Sentry 6.12.1, published 2026-10-13: the newest release at least 14 days old on 2026-11-25. MIT. -->
+    <PackageReference Include="Sentry" Version="6.12.1" />
+    <Compile Include="$(MSBuildThisFileDirectory)SentryDiagnostics.cs" Link="SentryDiagnostics.cs" />
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>TinyxnbVersion</_Parameter1>
+      <_Parameter2>$(Version)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

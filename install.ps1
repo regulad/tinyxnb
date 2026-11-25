@@ -67,6 +67,8 @@ $RequiredFiles = @(
     'XnbThumbnail.deps.json'
     'XnbThumbnail.runtimeconfig.json'
     'XnbCore.dll'
+    # The handler's crash reports and usage counts (PRIVACY.md); xnb2png.exe embeds its own.
+    'Sentry.dll'
     'xnb2png.exe'
 )
 
