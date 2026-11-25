@@ -28,8 +28,12 @@
     <!-- The comhost tests call COM vtables through function pointers. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-    <!-- packages.lock.json is setup-dotnet's NuGet cache key in release.yml. -->
+    <!--
+      packages.lock.json pins the transitive packages too, and is setup-dotnet's NuGet cache key
+      in release.yml. CI (GitHub sets CI=true) restores exactly what it records.
+    -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
 
   <ItemGroup>

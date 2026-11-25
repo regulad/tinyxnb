@@ -43,6 +43,9 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
+          # The test project's MSTest packages, keyed on its lock file.
+          cache: true
+          cache-dependency-path: tests/XnbThumbnail.Tests/packages.lock.json
 
       - name: Resolve version
         id: version
@@ -72,13 +75,6 @@ jobs:
       # handler installed, so it runs after staging, below. See tests/XnbThumbnail.Tests.
       - name: Test
         run: dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --filter "TestCategory!=Shell" --logger "console;verbosity=normal"
-
-      - name: Upload lock file (temporary)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: packages-lock
-          path: tests/XnbThumbnail.Tests/packages.lock.json
 
       - name: Stage package
         shell: pwsh
@@ -116,21 +112,52 @@ jobs:
 
           Get-ChildItem $stage -Recurse -File | ForEach-Object { $_.FullName.Replace("$PWD\", '') }
 
-      # The real Explorer path: install the staged package per-user, as a user would, then have
-      # the Shell extract a thumbnail through IShellItemImageFactory, which runs the handler in
-      # dllhost.exe. The runner is a Windows Server image, so make sure thumbnails are on first.
+      # EXPERIMENT: find out whether the per-user registration is usable from a de-elevated
+      # process, and whether a machine registration works from the elevated one.
       - name: Install the staged package
         shell: pwsh
         run: |
+          whoami /groups | Select-String 'Mandatory Label'
           $advanced = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
           New-Item -Path $advanced -Force | Out-Null
           New-ItemProperty -LiteralPath $advanced -Name IconsOnly -Value 0 -PropertyType DWord -Force | Out-Null
           ./stage/install.ps1
 
-      - name: Test through the Shell
+      - name: Test through the Shell, de-elevated
+        id: shell_user
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'shell-user.log'
+          $exit = Join-Path $env:RUNNER_TEMP 'shell-user.exit'
+          $script = Join-Path $env:RUNNER_TEMP 'shell-user.cmd'
+          @(
+            '@echo off'
+            "cd /d `"$PWD`""
+            'set TINYXNB_REQUIRE_SHELL=1'
+            "(whoami /groups | findstr /c:`"Mandatory Label`" & dotnet test tests\XnbThumbnail.Tests\XnbThumbnail.Tests.csproj -c Release --no-build --filter TestCategory=Shell --logger `"console;verbosity=normal`") > `"$log`" 2>&1"
+            "echo %ERRORLEVEL%> `"$exit`""
+          ) | Set-Content -LiteralPath $script -Encoding ascii
+          Get-Content -LiteralPath $script
+          runas /trustlevel:0x20000 "cmd /c `"$script`""
+          for ($i = 0; $i -lt 300 -and -not (Test-Path -LiteralPath $exit); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
+          if (-not (Test-Path -LiteralPath $exit)) { throw 'The de-elevated test never finished.' }
+          $code = [int](Get-Content -LiteralPath $exit -Raw).Trim()
+          if ($code -ne 0) { throw "De-elevated Shell test exited $code." }
+
+      - name: Test through the Shell, machine scope
+        if: steps.shell_user.outcome == 'failure'
         env:
           TINYXNB_REQUIRE_SHELL: '1'
-        run: dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --no-build --filter "TestCategory=Shell" --logger "console;verbosity=normal"
+        shell: pwsh
+        run: |
+          ./stage/uninstall.ps1 -RemoveFiles
+          ./stage/install.ps1 -Scope Machine -InstallDir "$env:RUNNER_TEMP\tinyxnb"
+          dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --no-build --filter "TestCategory=Shell" --logger "console;verbosity=normal"
+          $code = $LASTEXITCODE
+          ./stage/uninstall.ps1 -Scope Machine
+          exit $code
 
       - name: Uninstall
         if: always() && hashFiles('stage/uninstall.ps1') != ''
