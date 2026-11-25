@@ -13,7 +13,9 @@ version: 2
 
 updates:
   - package-ecosystem: "nuget"
-    directory: "/"
+    # Each project by its directory: there is no solution file to lead Dependabot to them, and the test project's
+    # packages.lock.json needs updating with its packages.
+    directories: ["/src/*", "/tests/*"]
     schedule:
       interval: "weekly"
       day: "monday"
