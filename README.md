@@ -187,12 +187,14 @@ The repo/product is `tinyxnb`; the binaries deliberately keep descriptive names
 |---|---|
 | `XnbCore` — parsing, decoding, PNG, resampling | Done |
 | `Xnb2Png` — CLI | Done |
-| `XnbThumbnail` — COM thumbnail provider | Builds and activates; whole COM path verified without registration |
+| `XnbThumbnail` — COM thumbnail provider | Done; extracted by the Shell through `dllhost.exe` in CI |
 | `install.ps1` / `uninstall.ps1` | Done; install/uninstall round trip verified, no leftovers |
-| Test project | Not written |
+| Test project | [`tests/XnbThumbnail.Tests`](tests/XnbThumbnail.Tests), run by `release.yml` |
 
-The handler has not yet been exercised by Explorer itself — only by a native stand-in host
-that activates it through `DllGetClassObject`.
+The test project drives the handler three ways: in-process as Explorer's thumbnail cache does,
+through the built comhost's `DllGetClassObject`, and through the Shell's own
+`IShellItemImageFactory` after installing the staged package, which runs it in `dllhost.exe`.
+Its project file describes each; every XNB is built in memory.
 
 ## What has actually been tested
 
@@ -203,8 +205,8 @@ synthetic data. This table is deliberately conservative: "untested" means untest
 | Format | Container | Tested how | Verdict |
 |---|---|---|---|
 | `Color` (RGBA8) | uncompressed | 21 real OneShot: World Machine Edition wallpapers, 352×415 to 1920×1080; two inspected by eye | **works** |
-| `Color` (RGBA8) | uncompressed | synthetic 4×4, driven through the full COM path | **pixel-exact** |
-| `Dxt1` / BC1 | uncompressed | decoded against Pillow's DDS decoder | **bit-exact, maxdiff 0** |
+| `Color` (RGBA8) | uncompressed | synthetic 4×4 in [the test project](tests/XnbThumbnail.Tests), in-process and through the comhost | **pixel-exact** |
+| `Dxt1` / BC1 | uncompressed | decoded against Pillow's DDS decoder; one known block in [the test project](tests/XnbThumbnail.Tests) | **bit-exact, maxdiff 0** |
 | `Dxt3` / BC2 | uncompressed | decoded against Pillow | **bit-exact, maxdiff 0** |
 | `Dxt5` / BC3 | uncompressed | decoded against Pillow | **bit-exact in RGB and alpha** |
 | `Bgra4444` | uncompressed | part of MonoGame's 19-file texture corpus; dimensions and format match | decodes |
@@ -212,8 +214,9 @@ synthetic data. This table is deliberately conservative: "untested" means untest
 | any | LZX | hand-built stream of *uncompressed* blocks | plumbing only |
 | `Bgr565`, `Bgra5551`, `Alpha8`, `Bgr32`, `Bgra32`, sRGB variants, `Dxt1a` | — | never exercised | **untested** |
 
-Rejection paths are verified: a `SpriteFontReader` XNB and a file that isn't an XNB at all
-both return `WINCODEC_ERR_BADHEADER`, so Explorer falls back to the generic icon.
+Rejection paths are tested: a `SpriteFontReader` XNB and a file that isn't an XNB at all
+both return `WINCODEC_ERR_BADHEADER`, so Explorer falls back to the generic icon
+([`ThumbnailProviderTests`](tests/XnbThumbnail.Tests/ThumbnailProviderTests.cs)).
 
 Two gaps worth knowing about:
 

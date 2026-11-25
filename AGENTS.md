@@ -19,7 +19,10 @@ This repository is tinyxnb: Explorer thumbnails and a **Save as PNG** verb for
 - MonoGame's test textures:
   `git clone --depth 1 --filter=blob:none --no-checkout https://github.com/MonoGame/MonoGame.git`,
   then `git sparse-checkout set Tests/Assets/Textures` and `git checkout`.
-- Build test XNBs in memory, and never commit game assets.
-- The PowerShell XNB generator and the native `DllGetClassObject` host used on
-  2026-08-10 were never committed. Rewrite them into the test project, which
-  isn't written yet.
+- Build test XNBs in memory, and never commit game assets:
+  [`tests/XnbThumbnail.Tests/XnbBuilder.cs`](tests/XnbThumbnail.Tests/XnbBuilder.cs)
+  writes them, and the test project replaces the uncommitted PowerShell
+  generator and native `DllGetClassObject` host used on 2026-08-10.
+- The Shell test needs the handler installed. From an elevated process, as on
+  GitHub's runners, COM ignores per-user registrations, so install with
+  `-Scope Machine` there; `release.yml` shows the sequence.

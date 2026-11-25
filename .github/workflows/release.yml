@@ -112,57 +112,31 @@ jobs:
 
           Get-ChildItem $stage -Recurse -File | ForEach-Object { $_.FullName.Replace("$PWD\", '') }
 
-      # EXPERIMENT: find out whether the per-user registration is usable from a de-elevated
-      # process, and whether a machine registration works from the elevated one.
+      # The real Explorer path: install the staged package, then have the Shell extract a
+      # thumbnail through IShellItemImageFactory, which runs the handler in dllhost.exe.
+      #
+      # Machine scope, though users install per-user: the job runs at High integrity with no
+      # split token to drop (runas /trustlevel:0x20000 stays High too), and COM ignores HKCU
+      # class registrations for such a process, so a per-user install fails here with
+      # REGDB_E_CLASSNOTREG (0x80040154). The staged package's own scripts still do the work.
+      # IconsOnly=0 makes sure the Server image's Explorer settings allow thumbnails.
       - name: Install the staged package
         shell: pwsh
         run: |
-          whoami /groups | Select-String 'Mandatory Label'
           $advanced = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
           New-Item -Path $advanced -Force | Out-Null
           New-ItemProperty -LiteralPath $advanced -Name IconsOnly -Value 0 -PropertyType DWord -Force | Out-Null
-          ./stage/install.ps1
+          ./stage/install.ps1 -Scope Machine -InstallDir "$env:RUNNER_TEMP\tinyxnb"
 
-      - name: Test through the Shell, de-elevated
-        id: shell_user
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $log = Join-Path $env:RUNNER_TEMP 'shell-user.log'
-          $exit = Join-Path $env:RUNNER_TEMP 'shell-user.exit'
-          $script = Join-Path $env:RUNNER_TEMP 'shell-user.cmd'
-          @(
-            '@echo off'
-            "cd /d `"$PWD`""
-            'set TINYXNB_REQUIRE_SHELL=1'
-            "(whoami /groups | findstr /c:`"Mandatory Label`" & dotnet test tests\XnbThumbnail.Tests\XnbThumbnail.Tests.csproj -c Release --no-build --filter TestCategory=Shell --logger `"console;verbosity=normal`") > `"$log`" 2>&1"
-            "echo %ERRORLEVEL%> `"$exit`""
-          ) | Set-Content -LiteralPath $script -Encoding ascii
-          Get-Content -LiteralPath $script
-          runas /trustlevel:0x20000 "cmd /c `"$script`""
-          for ($i = 0; $i -lt 300 -and -not (Test-Path -LiteralPath $exit); $i++) { Start-Sleep -Seconds 1 }
-          if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
-          if (-not (Test-Path -LiteralPath $exit)) { throw 'The de-elevated test never finished.' }
-          $code = [int](Get-Content -LiteralPath $exit -Raw).Trim()
-          if ($code -ne 0) { throw "De-elevated Shell test exited $code." }
-
-      - name: Test through the Shell, machine scope
-        if: steps.shell_user.outcome == 'failure'
+      - name: Test through the Shell
         env:
           TINYXNB_REQUIRE_SHELL: '1'
-        shell: pwsh
-        run: |
-          ./stage/uninstall.ps1 -RemoveFiles
-          ./stage/install.ps1 -Scope Machine -InstallDir "$env:RUNNER_TEMP\tinyxnb"
-          dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --no-build --filter "TestCategory=Shell" --logger "console;verbosity=normal"
-          $code = $LASTEXITCODE
-          ./stage/uninstall.ps1 -Scope Machine
-          exit $code
+        run: dotnet test tests/XnbThumbnail.Tests/XnbThumbnail.Tests.csproj -c Release --no-build --filter "TestCategory=Shell" --logger "console;verbosity=normal"
 
       - name: Uninstall
         if: always() && hashFiles('stage/uninstall.ps1') != ''
         shell: pwsh
-        run: ./stage/uninstall.ps1 -RemoveFiles
+        run: ./stage/uninstall.ps1 -Scope Machine -RemoveFiles -InstallDir "$env:RUNNER_TEMP\tinyxnb"
 
       - name: Archive
         shell: pwsh

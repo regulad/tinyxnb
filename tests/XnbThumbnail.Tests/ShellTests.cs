@@ -1,4 +1,6 @@
 using System;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -17,6 +19,8 @@ namespace XnbThumbnail.Tests
     ///   dotnet test tests/XnbThumbnail.Tests -c Release --filter "TestCategory=Shell"
     ///   ./uninstall.ps1 -RemoveFiles
     /// </code>
+    /// From an elevated process (High integrity), COM ignores per-user class registrations, so
+    /// there the handler must be installed with <c>-Scope Machine</c>, as release.yml does.
     /// </summary>
     [STATestClass]
     public sealed class ShellTests
@@ -63,6 +67,7 @@ namespace XnbThumbnail.Tests
                     Marshal.ReleaseComObject(factory);
                 }
                 Assert.AreEqual(Native.S_OK, hr, $"IShellItemImageFactory.GetImage returned 0x{hr:X8}.");
+                AssertRanOutOfProcess();
 
                 try
                 {
@@ -96,6 +101,40 @@ namespace XnbThumbnail.Tests
             {
                 dir.Delete(true);
             }
+        }
+
+        /// <summary>
+        /// The thumbnail must have come from the handler in a dllhost.exe surrogate, as Explorer
+        /// gets it, not from this process loading the comhost itself.
+        /// </summary>
+        private static void AssertRanOutOfProcess()
+        {
+            const string comhost = "XnbThumbnail.comhost.dll";
+
+            foreach (ProcessModule m in Process.GetCurrentProcess().Modules)
+                Assert.IsFalse(string.Equals(comhost, m.ModuleName, StringComparison.OrdinalIgnoreCase),
+                               "The Shell loaded the handler into the test process.");
+
+            foreach (Process p in Process.GetProcessesByName("dllhost"))
+            {
+                try
+                {
+                    foreach (ProcessModule m in p.Modules)
+                    {
+                        if (string.Equals(m.ModuleName, comhost, StringComparison.OrdinalIgnoreCase))
+                            return;
+                    }
+                }
+                catch (Exception e) when (e is Win32Exception || e is InvalidOperationException)
+                {
+                    // Another user's surrogate, or one that just exited.
+                }
+                finally
+                {
+                    p.Dispose();
+                }
+            }
+            Assert.Fail($"No dllhost.exe has {comhost} loaded.");
         }
     }
 }
