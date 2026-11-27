@@ -31,15 +31,16 @@ Options
         private static int _faults;
 
         /// <summary>
-        /// One `convert` transaction per run, the usage count, and a report of any failure that
-        /// is tinyxnb's fault (PRIVACY.md); nothing from a build from source or under
-        /// DO_NOT_TRACK. xnb2png is its own process, so an exception that would end it is
+        /// One session and one `convert` transaction per run, the usage count, and a report of
+        /// any failure that is tinyxnb's fault (PRIVACY.md); nothing from a build from source or
+        /// under DO_NOT_TRACK. xnb2png is its own process, so an exception that would end it is
         /// reported here, before it does, and disposing the SDK flushes the report.
         /// </summary>
         private static int Main(string[] args)
         {
             using (SentryDiagnostics.Start())
             {
+                SentryDiagnostics.StartSession();
                 ITransactionTracer run = SentryDiagnostics.StartTransaction("convert", "convert.run");
                 try
                 {
@@ -48,12 +49,14 @@ Options
                         _faults > 0 ? SpanStatus.InternalError :
                         code == 0 ? SpanStatus.Ok :
                         SpanStatus.InvalidArgument);
+                    SentryDiagnostics.EndSession(SessionEndStatus.Exited);
                     return code;
                 }
                 catch (Exception ex)
                 {
                     SentryDiagnostics.Capture(ex, handled: false);
                     SentryDiagnostics.Finish(run, SpanStatus.InternalError);
+                    SentryDiagnostics.EndSession(SessionEndStatus.Crashed);
                     throw;
                 }
             }

@@ -1,5 +1,6 @@
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sentry;
 using Tinyxnb;
 
 namespace XnbThumbnail.Tests
@@ -114,6 +115,44 @@ namespace XnbThumbnail.Tests
             Assert.IsTrue(Guid.TryParseExact(SentryDiagnostics.RunId, "N", out id));
             Assert.AreNotEqual(Guid.Empty, id);
             Assert.IsTrue(SentryDiagnostics.Release.StartsWith("tinyxnb@", StringComparison.Ordinal));
+        }
+
+        [TestMethod]
+        public void SessionsAreNamedByTheRunIdAlone()
+        {
+            DateTimeOffset start = DateTimeOffset.UtcNow;
+            SessionUpdate first = SentryDiagnostics.FirstUpdate(start);
+
+            // The SDK's own sessions would carry its installation ID, which outlives the run.
+            Assert.AreEqual(SentryDiagnostics.RunId, first.DistinctId);
+            Assert.IsNull(first.IpAddress);
+            Assert.IsNull(first.UserAgent);
+            Assert.IsTrue(first.IsInitial);
+            Assert.AreEqual(0, first.SequenceNumber);
+            Assert.AreEqual(0, first.ErrorCount);
+            Assert.IsNull(first.EndStatus);
+            Assert.AreEqual(SentryDiagnostics.Release, first.Release);
+            Assert.AreEqual(SentryDiagnostics.EnvironmentName, first.Environment);
+        }
+
+        [TestMethod]
+        public void SessionUpdatesCountErrorsAndEnd()
+        {
+            DateTimeOffset start = DateTimeOffset.UtcNow;
+            SessionUpdate first = SentryDiagnostics.FirstUpdate(start);
+            SessionUpdate errored = SentryDiagnostics.NextUpdate(first, errored: true, endStatus: null, start.AddSeconds(1));
+            SessionUpdate ended = SentryDiagnostics.NextUpdate(errored, errored: false, endStatus: SessionEndStatus.Exited, start.AddSeconds(2));
+
+            Assert.AreEqual(first.Id, ended.Id, "Every update belongs to the run's one session.");
+            Assert.AreEqual(start, ended.StartTimestamp);
+            Assert.AreEqual(SentryDiagnostics.RunId, ended.DistinctId);
+            Assert.IsFalse(errored.IsInitial);
+            Assert.AreEqual(1, errored.SequenceNumber);
+            Assert.AreEqual(1, errored.ErrorCount);
+            Assert.IsNull(errored.EndStatus);
+            Assert.AreEqual(2, ended.SequenceNumber);
+            Assert.AreEqual(1, ended.ErrorCount);
+            Assert.AreEqual(SessionEndStatus.Exited, ended.EndStatus);
         }
     }
 }

@@ -112,6 +112,8 @@ namespace XnbThumbnail
         private static ITransactionTracer StartRun(uint cx)
         {
             _ = Diagnostics.Value;
+            // The first thumbnail starts this dllhost.exe's one session.
+            SentryDiagnostics.StartSession();
             ITransactionTracer run = SentryDiagnostics.StartTransaction("thumbnail", "thumbnail.render");
             run?.SetTag("cx", cx.ToString(System.Globalization.CultureInfo.InvariantCulture));
             return run;

@@ -1,6 +1,6 @@
 # tinyxnb privacy policy
 
-*Effective 25 November 2026. Publisher: Parker Wahle, regulad@regulad.xyz.*
+*Effective 27 November 2026. Publisher: Parker Wahle, regulad@regulad.xyz.*
 
 tinyxnb gives Windows Explorer thumbnails for `.xnb` files, and a **Save as PNG** command, `xnb2png`, that converts them. It comes as two programs: the thumbnail handler, which Explorer runs, and `xnb2png`.
 
@@ -13,6 +13,7 @@ tinyxnb reads your `.xnb` files and writes the PNGs you ask for, next to them or
 To find and fix problems, tinyxnb's releases send crash reports and usage counts (a build of tinyxnb from its source code sends none) to Sentry (Functional Software, Inc., sentry.io), a service that stores them on our behalf, in the United States:
 
 - **Errors and crash reports:** what went wrong and where in tinyxnb's code, with the error's message stripped of file paths and of your user and computer names. Only what points at a fault in tinyxnb: not a file that isn't a texture, or one that can't be read or written.
+- **Runs:** one record for each run of a program (each start of the process that shows thumbnails, and each run of `xnb2png`): when it started, whether it hit an error, and, for `xnb2png`, whether it finished or crashed.
 - **Usage counts:** one record for each thumbnail the handler makes, with the size Explorer asked for, the texture's format (for example `Dxt5`) and how it went; and one for each run of `xnb2png`, with how it was run (on files, a folder, or for information), whether Explorer's **Save as PNG** started it, how many files it converted, skipped and failed, and how it went.
 - **This computer:** tinyxnb's version, the Windows version and the .NET version, and with an error report its time zone.
 

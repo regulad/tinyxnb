@@ -8,8 +8,9 @@ namespace Tinyxnb
 {
     /// <summary>
     /// What the thumbnail handler and xnb2png share for their diagnostics, which PRIVACY.md
-    /// describes: crash reports, and one transaction per thumbnail or conversion as the usage
-    /// count. Compiled into both from Diagnostics.props; XnbCore stays free of NuGet packages.
+    /// describes: crash reports, one session per run for release health, and one transaction
+    /// per thumbnail or conversion as the usage count. Compiled into both from
+    /// Diagnostics.props; XnbCore stays free of NuGet packages.
     /// </summary>
     /// <remarks>
     /// Modelled on regulad/Warlock's <c>warlock-diagnostics</c>: the DSN is in the source, but
@@ -54,6 +55,9 @@ namespace Tinyxnb
         /// <summary><c>tinyxnb@&lt;version&gt;</c>, as release.yml names the release in Sentry.</summary>
         internal static string Release => "tinyxnb@" + Version;
 
+        /// <summary>The environment every event and session names.</summary>
+        internal const string EnvironmentName = "production";
+
         /// <summary>Whether Sentry is running in this process: started, and not turned off.</summary>
         internal static bool Started { get; private set; }
 
@@ -95,14 +99,18 @@ namespace Tinyxnb
                 {
                     Dsn = Dsn,
                     Release = Release,
-                    Environment = "production",
+                    Environment = EnvironmentName,
 
                     // No PII: no user or machine name, and no IP address inferred from the request.
                     SendDefaultPii = false,
                     IsEnvironmentUser = false,
                     ServerName = "",
 
-                    // Nothing on disk: no offline cache, no stored installation ID, no sessions.
+                    // Nothing on disk: no offline cache and no stored installation ID. The SDK's
+                    // own sessions stay off, as they would name the installation ID, which falls
+                    // back to a hash of the network adapters or the machine's name (sentry-dotnet
+                    // 6.12.1, GlobalSessionManager.StartSession): StartSession sends this run's
+                    // own, named by RunId.
                     CacheDirectoryPath = null,
                     DisableFileWrite = true,
                     AutoSessionTracking = false,
@@ -177,12 +185,72 @@ namespace Tinyxnb
             try
             {
                 SentrySdk.CaptureException(exception, handled, !handled, scope => scope.User = new SentryUser { Id = RunId });
+                UpdateSession(errored: true, endStatus: null);
             }
             catch
             {
                 /* never let diagnostics fail the caller */
             }
         }
+
+        private static readonly object SessionLock = new object();
+
+        /// <summary>This run's session as last sent, or null before <see cref="StartSession"/>.</summary>
+        private static SessionUpdate _session;
+
+        /// <summary>
+        /// Starts this run's session, once, if Sentry is running: what release health counts, as
+        /// one healthy, errored or crashed run. It is named by <see cref="RunId"/> alone.
+        /// </summary>
+        internal static void StartSession()
+        {
+            if (!Started) return;
+            try
+            {
+                lock (SessionLock)
+                {
+                    if (_session != null) return;
+                    _session = FirstUpdate(DateTimeOffset.UtcNow);
+                    SentrySdk.CaptureSession(_session);
+                }
+            }
+            catch
+            {
+                /* never let diagnostics fail the caller */
+            }
+        }
+
+        /// <summary>
+        /// Ends this run's session with <paramref name="status"/>: <c>Exited</c> for a run that
+        /// finished, <c>Crashed</c> for one ended by an exception. The thumbnail handler's never
+        /// ends, as nothing tells it when dllhost.exe exits.
+        /// </summary>
+        internal static void EndSession(SessionEndStatus status) => UpdateSession(errored: false, endStatus: status);
+
+        private static void UpdateSession(bool errored, SessionEndStatus? endStatus)
+        {
+            lock (SessionLock)
+            {
+                if (_session == null || _session.EndStatus != null) return;
+                _session = NextUpdate(_session, errored, endStatus, DateTimeOffset.UtcNow);
+                SentrySdk.CaptureSession(_session);
+            }
+        }
+
+        /// <summary>A session's first update: new, named by <see cref="RunId"/>, and healthy.</summary>
+        internal static SessionUpdate FirstUpdate(DateTimeOffset now) =>
+            new SessionUpdate(SentryId.Create(), RunId, now, Release, EnvironmentName,
+                ipAddress: null, userAgent: null, errorCount: 0, isInitial: true,
+                timestamp: now, sequenceNumber: 0, endStatus: null);
+
+        /// <summary>
+        /// The update after <paramref name="previous"/>: one more error when
+        /// <paramref name="errored"/>, and ended when <paramref name="endStatus"/> is set.
+        /// </summary>
+        internal static SessionUpdate NextUpdate(SessionUpdate previous, bool errored, SessionEndStatus? endStatus, DateTimeOffset now) =>
+            new SessionUpdate(previous.Id, RunId, previous.StartTimestamp, Release, EnvironmentName,
+                ipAddress: null, userAgent: null, errorCount: previous.ErrorCount + (errored ? 1 : 0),
+                isInitial: false, timestamp: now, sequenceNumber: previous.SequenceNumber + 1, endStatus: endStatus);
 
         /// <summary>Waits up to <paramref name="timeout"/> for what's queued to be sent.</summary>
         internal static void Flush(TimeSpan timeout)
